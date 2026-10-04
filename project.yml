@@ -1,0 +1,41 @@
+name: TelematicsApp
+options:
+  bundleIdPrefix: com.satya101
+  deploymentTarget:
+    iOS: "17.0"
+targets:
+  TelematicsApp:
+    type: application
+    platform: iOS
+    sources: [TelematicsApp]
+    info:
+      path: TelematicsApp/Info.plist
+      properties:
+        CFBundleDisplayName: WHG Telematics
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
+        UISupportedInterfaceOrientations~ipad: [UIInterfaceOrientationPortrait, UIInterfaceOrientationPortraitUpsideDown, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
+        LSSupportsOpeningDocumentsInPlace: false
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: CSV Export
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Alternate
+            LSItemContentTypes: [public.comma-separated-values-text, public.plain-text]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.satya101.whgtelematics
+        SWIFT_VERSION: "5.9"
+        TARGETED_DEVICE_FAMILY: "1,2"
+  TelematicsAppTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [TelematicsAppTests]
+    dependencies:
+      - target: TelematicsApp
+schemes:
+  TelematicsApp:
+    build:
+      targets:
+        TelematicsApp: all
+    test:
+      targets: [TelematicsAppTests]
