@@ -73,7 +73,8 @@ enum PayloadParser {
                 board: board
             ))
         }
-        result.pings.sort { $0.date < $1.date }
+        // Stable on equal timestamps (exports contain duplicate pings), matching the website.
+        result.pings.sort { ($0.date, $0.id) < ($1.date, $1.id) }
         return result
     }
 
