@@ -138,6 +138,7 @@ struct HeaderStatsView: View {
                 Text("FW ").foregroundStyle(Theme.muted) + Text(store.firmware).foregroundStyle(Theme.accent)
             }
             .font(.caption.monospaced())
+            Text("Board: \(store.board.label)").font(.caption2).foregroundStyle(Theme.muted)
 
             HStack {
                 stat("\(store.trips.count)", "Trips")
