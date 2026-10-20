@@ -36,15 +36,17 @@ struct JourneyReportView: View {
                     Text(JourneyReport.summaryLine(trips))
                 }
             }
-            .navigationTitle("Journey Summary Report")
+            .navigationTitle("Journey Report")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } }
-                ToolbarItemGroup(placement: .primaryAction) {
+                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
+                // Export actions sit at the bottom, within reach on iPhone.
+                ToolbarItemGroup(placement: .bottomBar) {
                     ShareLink(item: csvFile(), preview: SharePreview("Journey Report CSV")) {
-                        Label("Export CSV", systemImage: "tablecells")
+                        Label("Export CSV", systemImage: "square.and.arrow.up")
                     }
-                    Button { printReport() } label: { Label("Print / PDF", systemImage: "printer") }
+                    Spacer()
+                    Button { printReport() } label: { Label("Print or Save PDF", systemImage: "printer") }
                 }
             }
             .task { await prepareRows() }
@@ -124,14 +126,15 @@ struct JourneyRowView: View {
                     Text("\(MelbourneTime.shortDate(s.start)) \(MelbourneTime.time(s.start)) → \(MelbourneTime.time(s.end))")
                         .font(.caption.monospacedDigit())
                     Spacer()
-                    Text(s.closedByDP4 ? "DP4 ✓" : "Timeout")
+                    Label(s.closedByDP4 ? "DP4 end" : "Timeout",
+                          systemImage: s.closedByDP4 ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(s.closedByDP4 ? Theme.green : Theme.yellow)
                 }
                 HStack(spacing: 12) {
-                    Text(String(format: "%.2f km", s.distanceKm)).foregroundStyle(Theme.green)
+                    Text(String(format: "%.2f km", s.distanceKm))
                     Text(MelbourneTime.duration(minutes: s.durationMin))
-                    Text(String(format: "%.0f km/h", s.maxSpeed)).foregroundStyle(Theme.red)
+                    Text(String(format: "%.0f km/h max", s.maxSpeed))
                     Text((row.type ?? defaultType).rawValue).foregroundStyle(Theme.muted)
                 }
                 .font(.caption)

@@ -7,7 +7,7 @@ and maps them, using the same logic as the website.
 
 ## Features
 
-- **Import**: Upload CSV from Files, or "Open in AssetIQ - Trip Logger" from Mail, AirDrop or Files.
+- **Import**: Import CSV from Files, or "Open in AssetIQ - Trip Logger" from Mail, AirDrop or Files.
   Board toggle for v370 (V2 Board) and v371; v371 reads solar charging voltage from field 23.
 - **Header**: IMEI, firmware, trip count, total km, top speed, last ping.
 - **Date filter**: one chip per Melbourne calendar day in the export, including idle days (shown as "(0)")
@@ -19,7 +19,8 @@ and maps them, using the same logic as the website.
 - **All Trips map**: every trip in the current filter in its own colour.
 - **Journey Summary Report**: asset, driver and trip type per trip (with defaults), start/end addresses
   from Apple's reverse geocoder, CSV export via the share sheet, and Print / PDF.
-- **Logic Tracker**: the trip detection rules and thresholds.
+- **How Trips Are Detected** (More menu): the trip detection rules and thresholds.
+- **Appearance**: follows the system Light/Dark setting and Increase Contrast; honours Reduce Motion, Dynamic Type and VoiceOver.
 
 All times are Melbourne local time. The app uses the system time zone database, so the AEST/AEDT switch
 lands on the exact hour (the website approximates it to the day).

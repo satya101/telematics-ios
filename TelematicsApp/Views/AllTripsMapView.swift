@@ -15,10 +15,14 @@ struct AllTripsMapView: View {
                     Annotation("T\(trip.id)", coordinate: start.coordinate, anchor: .center) {
                         Circle()
                             .fill(Theme.tripPalette[index % Theme.tripPalette.count])
-                            .frame(width: 10, height: 10)
-                            .padding(6)
+                            .frame(width: 12, height: 12)
+                            .overlay(Circle().stroke(.white, lineWidth: 1.5))
+                            .padding(10)
                             .contentShape(Circle())
                             .onTapGesture { selected = trip }
+                            .accessibilityLabel("Trip \(trip.id), starts \(MelbourneTime.time(start.date))")
+                            .accessibilityAddTraits(.isButton)
+                            .accessibilityAction { selected = trip }
                     }
                 }
             }
@@ -32,10 +36,18 @@ struct AllTripsMapView: View {
                     Text("Trip \(t.id) · \(MelbourneTime.time(s.start))→\(MelbourneTime.time(s.end)) \(MelbourneTime.abbreviation(s.start)) · \(String(format: "%.1f", s.distanceKm)) km")
                         .font(.caption.monospacedDigit())
                     Spacer()
-                    Button { selected = nil } label: { Image(systemName: "xmark.circle.fill") }
+                    Button { selected = nil } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.title3)
+                            .symbolRenderingMode(.hierarchical)
+                            .foregroundStyle(Theme.muted)
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .accessibilityLabel("Close trip details")
                 }
-                .padding(12)
-                .background(Theme.card)
+                .padding(.leading, 12).padding(.vertical, 2)
+                .background(.regularMaterial)
             }
         }
         .navigationTitle("All Trips")

@@ -57,9 +57,9 @@ struct LogicTrackerView: View {
                     threshold("Min trip duration", "\(fmt(t.minTripDurationMin)) min")
                 }
             }
-            .navigationTitle("Trip Detection Logic")
+            .navigationTitle("How Trips Are Detected")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { Button("Done") { dismiss() } }
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
         }
     }
 

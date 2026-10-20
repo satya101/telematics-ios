@@ -1,7 +1,8 @@
 import SwiftUI
 
 /// Full-screen progress for an iLinkAir fetch: a radar sweeping from a High Site tower,
-/// the current step, a live log count and a cancel button.
+/// the current step, a live log count and a cancel button. With Reduce Motion on, the radar
+/// and progress hold still and only the text and count change.
 struct FetchLoadingView: View {
     let stage: ILinkAirStore.FetchStage
     let fetched: Int
@@ -42,7 +43,7 @@ struct FetchLoadingView: View {
                 Text("Cancel").frame(maxWidth: 220)
             }
             .buttonStyle(.bordered)
-            .tint(Theme.muted)
+            .controlSize(.large)
             .padding(.bottom, 24)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -72,11 +73,12 @@ struct FetchLoadingView: View {
 // MARK: - Radar
 
 private struct RadarView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Fixed "devices" on the scope: angle in degrees, radius as a fraction.
     private let blips: [(Double, Double)] = [(35, 0.62), (110, 0.38), (190, 0.8), (255, 0.55), (320, 0.3), (75, 0.86)]
 
     var body: some View {
-        TimelineView(.animation) { context in
+        TimelineView(.animation(paused: reduceMotion)) { context in
             let t = context.date.timeIntervalSinceReferenceDate
             let sweep = (t * 110).truncatingRemainder(dividingBy: 360)
             GeometryReader { geo in
@@ -132,7 +134,7 @@ private struct RadarView: View {
                         Image(systemName: "antenna.radiowaves.left.and.right")
                             .font(.system(size: 26, weight: .semibold))
                             .foregroundStyle(Theme.accent)
-                            .symbolEffect(.variableColor.iterative, options: .repeating)
+                            .symbolEffect(.variableColor.iterative, options: .repeating, isActive: !reduceMotion)
                     }
                 }
                 .frame(width: size, height: size)
@@ -147,8 +149,17 @@ private struct RadarView: View {
 
 private struct AnimatedTitle: View {
     let text: String
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
+        if reduceMotion {
+            Text(text + "…").font(.title3.weight(.bold))
+        } else {
+            dots
+        }
+    }
+
+    private var dots: some View {
         TimelineView(.periodic(from: .now, by: 0.4)) { context in
             let dots = Int(context.date.timeIntervalSinceReferenceDate / 0.4) % 4
             Text(text + String(repeating: ".", count: dots) + String(repeating: " ", count: 3 - dots))
@@ -160,6 +171,7 @@ private struct AnimatedTitle: View {
 
 private struct ProgressStrip: View {
     let fraction: Double?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         GeometryReader { geo in
@@ -170,6 +182,8 @@ private struct ProgressStrip: View {
                         .fill(LinearGradient(colors: [Theme.accent, Theme.green], startPoint: .leading, endPoint: .trailing))
                         .frame(width: max(6, geo.size.width * fraction))
                         .animation(.easeOut(duration: 0.3), value: fraction)
+                } else if reduceMotion {
+                    Capsule().fill(Theme.accent.opacity(0.4))
                 } else {
                     TimelineView(.animation) { context in
                         let phase = (context.date.timeIntervalSinceReferenceDate / 1.3).truncatingRemainder(dividingBy: 1)
@@ -189,6 +203,7 @@ private struct ProgressStrip: View {
 
 private struct StepRow: View {
     let current: ILinkAirStore.FetchStage
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         HStack(spacing: 0) {
@@ -201,10 +216,14 @@ private struct StepRow: View {
                         if step < current {
                             Image(systemName: "checkmark").font(.caption.weight(.bold)).foregroundStyle(Theme.bg)
                         } else if step == current {
-                            Circle().stroke(Theme.accent, lineWidth: 2).frame(width: 34, height: 34)
-                                .phaseAnimator([false, true]) { ring, on in
-                                    ring.scaleEffect(on ? 1.2 : 0.9).opacity(on ? 0.1 : 0.8)
-                                } animation: { _ in .easeInOut(duration: 0.8) }
+                            if reduceMotion {
+                                Circle().stroke(Theme.accent.opacity(0.6), lineWidth: 2).frame(width: 34, height: 34)
+                            } else {
+                                Circle().stroke(Theme.accent, lineWidth: 2).frame(width: 34, height: 34)
+                                    .phaseAnimator([false, true]) { ring, on in
+                                        ring.scaleEffect(on ? 1.2 : 0.9).opacity(on ? 0.1 : 0.8)
+                                    } animation: { _ in .easeInOut(duration: 0.8) }
+                            }
                             Text("\(step.rawValue + 1)").font(.caption.weight(.bold)).foregroundStyle(Theme.bg)
                         } else {
                             Text("\(step.rawValue + 1)").font(.caption.weight(.bold)).foregroundStyle(Theme.muted)
@@ -216,7 +235,9 @@ private struct StepRow: View {
                         .foregroundStyle(step <= current ? .primary : Theme.muted)
                 }
                 .frame(maxWidth: .infinity)
-                .animation(.spring(duration: 0.4), value: current)
+                .animation(reduceMotion ? nil : .spring(duration: 0.4), value: current)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Step \(step.rawValue + 1), \(step.title), " + (step < current ? "done" : step == current ? "in progress" : "not started"))
             }
         }
     }
@@ -225,5 +246,4 @@ private struct StepRow: View {
 #Preview {
     FetchLoadingView(stage: .exporting, fetched: 1240, expected: 3000,
                      subtitle: "1 Oct 2026 – 3 Oct 2026 · IMEI 352648065204596", onCancel: {})
-        .preferredColorScheme(.dark)
 }

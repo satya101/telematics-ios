@@ -10,7 +10,6 @@ struct TelematicsApp: App {
             RootView()
                 .environment(store)
                 .environment(ilinkair)
-                .preferredColorScheme(.dark)
                 .tint(Theme.accent)
                 // CSVs shared from Files, Mail or AirDrop ("Open in AssetIQ").
                 .onOpenURL { url in Task { await store.load(url: url) } }

@@ -11,11 +11,12 @@ struct RootView: View {
     @State private var showAllTrips = false
     @State private var showFetch = false
     @State private var showSaveCSV = false
+    @State private var saveError: String?
 
     var body: some View {
         NavigationSplitView {
             sidebar
-                .navigationTitle("AssetIQ - Trip Logger")
+                .navigationTitle(store.hasData ? "Trips" : "Trip Logger")
                 .toolbar { toolbar }
         } detail: {
             if let id = selectedTripID, let trip = store.trips.first(where: { $0.id == id }) {
@@ -23,8 +24,8 @@ struct RootView: View {
             } else if store.hasData {
                 AllTripsMapView(trips: store.visibleTrips)
             } else {
-                ContentUnavailableView("Fetch logs, upload a CSV or select a trip", systemImage: "map",
-                                       description: Text("Arrows show heading direction on each ping."))
+                ContentUnavailableView("No Logs Loaded", systemImage: "map",
+                                       description: Text("Fetch logs from iLinkAir or import a CSV to see trips on the map."))
             }
         }
         .fileImporter(isPresented: $showImporter, allowedContentTypes: [.commaSeparatedText, .plainText, .text]) { result in
@@ -37,13 +38,13 @@ struct RootView: View {
         .sheet(isPresented: $showFetch, onDismiss: { if store.isFetched { selectedTripID = nil } }) { ILinkAirFetchView() }
         .fileExporter(isPresented: $showSaveCSV, document: CSVTextDocument(text: store.rawText ?? ""),
                       contentType: .commaSeparatedText, defaultFilename: store.fileName ?? "IOTHighSitePayloads.csv") { result in
-            if case .failure(let error) = result { store.errorMessage = "Save failed: \(error.localizedDescription)" }
+            if case .failure(let error) = result { saveError = error.localizedDescription }
         }
         .sheet(isPresented: $showReport) { JourneyReportView(trips: store.visibleTrips) }
         .sheet(isPresented: $showAllTrips) {
             NavigationStack {
                 AllTripsMapView(trips: store.visibleTrips)
-                    .toolbar { Button("Done") { showAllTrips = false } }
+                    .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { showAllTrips = false } } }
             }
         }
         .overlay {
@@ -53,10 +54,20 @@ struct RootView: View {
                     .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
             }
         }
-        .alert("Couldn't load export", isPresented: .constant(store.errorMessage != nil)) {
-            Button("OK") { store.errorMessage = nil }
+        .alert("Couldn't Load Logs", isPresented: Binding(get: { store.errorMessage != nil },
+                                                           set: { if !$0 { store.errorMessage = nil } })) {
+            Button("OK", role: .cancel) {}
         } message: {
             Text(store.errorMessage ?? "")
+        }
+        .background {
+            // A second alert needs its own host view.
+            Color.clear.alert("Couldn't Save CSV", isPresented: Binding(get: { saveError != nil },
+                                                                     set: { if !$0 { saveError = nil } })) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(saveError ?? "")
+            }
         }
     }
 
@@ -68,18 +79,24 @@ struct RootView: View {
                 ContentUnavailableView {
                     VStack(spacing: 12) {
                         AssetIQLogo().frame(width: 96, height: 96)
-                        Text("No export loaded")
+                        Text("No Logs Loaded")
                     }
                 } description: {
-                    Text("Fetch High Site logs from iLinkAir for a date range, or import an IOT High Site payload export (Payload + CreatedDate columns). Trips are detected from sustained movement, not just ping timing, so parked GPS jitter and odometer glitches are filtered out.")
+                    Text("Fetch High Site logs from iLinkAir for a date range, or import an IOT High Site export CSV.")
                 } actions: {
                     Button { showFetch = true } label: { Label("Fetch from iLinkAir", systemImage: "arrow.down.circle") }
                         .buttonStyle(.borderedProminent)
-                    Button { showImporter = true } label: { Label("Upload Export CSV", systemImage: "square.and.arrow.down") }
+                        .controlSize(.large)
+                    Button { showImporter = true } label: { Label("Import CSV", systemImage: "doc.badge.plus") }
                         .buttonStyle(.bordered)
+                        .controlSize(.large)
                 }
-                boardPicker.padding(.horizontal)
-                Text("All times Melbourne AEST/AEDT").font(.caption).foregroundStyle(Theme.yellow)
+                VStack(spacing: 8) {
+                    boardPicker
+                    Label("All times are Melbourne time (AEST/AEDT).", systemImage: "clock")
+                        .font(.footnote).foregroundStyle(Theme.muted)
+                }
+                .padding(.horizontal)
             }
             .frame(maxHeight: .infinity)
             .background(Theme.bg)
@@ -99,7 +116,7 @@ struct RootView: View {
                         TripCardView(trip: trip).tag(trip.id)
                     }
                 } header: {
-                    Text("\(store.visibleTrips.count) trips")
+                    Text("^[\(store.visibleTrips.count) trip](inflect: true)")
                 }
             }
             .scrollContentBackground(.hidden)
@@ -112,25 +129,26 @@ struct RootView: View {
             ForEach(BoardVersion.allCases) { Text($0.label).tag($0) }
         }
         .pickerStyle(.segmented)
+        .accessibilityLabel("Board version")
     }
 
     @ToolbarContentBuilder private var toolbar: some ToolbarContent {
-        ToolbarItem(placement: .topBarLeading) {
-            if store.hasData {
+        if store.hasData {
+            ToolbarItem(placement: .topBarLeading) {
                 Button {
                     selectedTripID = nil
                     store.reset()
                 } label: { Label("Home", systemImage: "house") }
-            } else {
-                AssetIQLogo(cornerRadius: 7).frame(width: 30, height: 30)
-                    .accessibilityLabel("AssetIQ")
             }
         }
         ToolbarItem(placement: .primaryAction) {
-            Button { showFetch = true } label: { Label("Fetch from iLinkAir", systemImage: "arrow.down.circle") }
-        }
-        ToolbarItem(placement: .primaryAction) {
-            Button { showImporter = true } label: { Label("Upload CSV", systemImage: "square.and.arrow.down") }
+            // One entry point for loading logs keeps the bar to two controls on iPhone.
+            Menu {
+                Button { showFetch = true } label: { Label("Fetch from iLinkAir", systemImage: "arrow.down.circle") }
+                Button { showImporter = true } label: { Label("Import CSV", systemImage: "doc.badge.plus") }
+            } label: {
+                Label("Load Logs", systemImage: "plus")
+            }
         }
         ToolbarItem(placement: .secondaryAction) {
             Menu {
@@ -139,14 +157,16 @@ struct RootView: View {
                         ForEach(BoardVersion.allCases) { Text($0.label).tag($0) }
                     }
                 }
-                if store.isFetched {
-                    Button { showSaveCSV = true } label: { Label("Save CSV", systemImage: "square.and.arrow.up") }
+                Section {
+                    Button { showAllTrips = true } label: { Label("All Trips Map", systemImage: "point.topleft.down.to.point.bottomright.curvepath") }
+                        .disabled(!store.hasData)
+                    Button { showReport = true } label: { Label("Journey Report", systemImage: "doc.text") }
+                        .disabled(store.visibleTrips.isEmpty)
+                    if store.isFetched {
+                        Button { showSaveCSV = true } label: { Label("Save Logs as CSV", systemImage: "square.and.arrow.down") }
+                    }
                 }
-                Button { showAllTrips = true } label: { Label("All Trips Map", systemImage: "point.topleft.down.to.point.bottomright.curvepath") }
-                    .disabled(!store.hasData)
-                Button { showReport = true } label: { Label("Journey Report", systemImage: "doc.text") }
-                    .disabled(store.visibleTrips.isEmpty)
-                Button { showLogic = true } label: { Label("Logic Tracker", systemImage: "info.circle") }
+                Button { showLogic = true } label: { Label("How Trips Are Detected", systemImage: "info.circle") }
             } label: {
                 Label("More", systemImage: "ellipsis.circle")
             }
@@ -158,6 +178,7 @@ struct RootView: View {
 
 struct HeaderStatsView: View {
     @Environment(TrackerStore.self) private var store
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -169,7 +190,9 @@ struct HeaderStatsView: View {
             .font(.caption.monospaced())
             Text("Board: \(store.board.label)").font(.caption2).foregroundStyle(Theme.muted)
 
-            HStack {
+            // Side by side normally; stacked at accessibility text sizes so nothing truncates.
+            let layout = typeSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8)) : AnyLayout(HStackLayout())
+            layout {
                 stat("\(store.trips.count)", "Trips")
                 stat(String(format: "%.0f km", store.totalKm), "Total km")
                 stat(String(format: "%.0f km/h", store.topSpeed), "Top Speed")
@@ -192,6 +215,7 @@ struct HeaderStatsView: View {
             Text(label).font(.caption2).foregroundStyle(Theme.muted).textCase(.uppercase)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -218,12 +242,16 @@ struct DateFilterView: View {
         let active = store.activeDate == date
         return Button { store.activeDate = date } label: {
             Text(label)
-                .font(.caption.weight(.semibold))
-                .padding(.horizontal, 10).padding(.vertical, 5)
+                .font(.footnote.weight(.semibold))
+                .padding(.horizontal, 12).padding(.vertical, 8)
+                .frame(minHeight: 32)
                 .background(active ? Theme.accent : Theme.card, in: Capsule())
                 .foregroundStyle(active ? Theme.bg : (idle ? Theme.muted : .primary))
+                .contentShape(Capsule())
         }
         .buttonStyle(.plain)
+        .accessibilityAddTraits(active ? .isSelected : [])
+        .accessibilityHint(idle ? "No trips on this day" : "")
     }
 }
 
@@ -231,6 +259,7 @@ struct DateFilterView: View {
 
 struct TripCardView: View {
     let trip: Trip
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
         let s = trip.summary
@@ -246,20 +275,39 @@ struct TripCardView: View {
                     .foregroundStyle(s.avgHDOP < 2 ? Theme.green : s.avgHDOP < 5 ? Theme.yellow : Theme.red)
             }
             Text("\(MelbourneTime.time(s.start)) → \(MelbourneTime.time(s.end))").font(.subheadline.monospacedDigit())
-            HStack {
+            let layout = typeSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 6)) : AnyLayout(HStackLayout())
+            layout {
                 stat(String(format: "%.2f", s.distanceKm), "km")
                 stat(String(format: "%.0f", s.maxSpeed), "max km/h")
                 stat("\(Int(s.durationMin.rounded()))", "min")
                 stat("\(s.pingCount)", "pings")
             }
-            HStack(spacing: 4) {
-                tag("Start", Theme.green)
-                if s.dp2Count > 0 { tag("DP2 ×\(s.dp2Count)", Theme.purple) }
-                tag("DP3 ×\(s.dp3Count)", Theme.accent)
-                s.closedByDP4 ? tag("DP4 ✓", Theme.green) : tag("⚠ Timeout", Theme.yellow)
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 4) { tags }
+                VStack(alignment: .leading, spacing: 4) { tags }
             }
         }
         .padding(.vertical, 4)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilitySummary)
+    }
+
+    @ViewBuilder private var tags: some View {
+        let s = trip.summary
+        if s.dp2Count > 0 { tag("DP2 ×\(s.dp2Count)", Theme.purple) }
+        tag("DP3 ×\(s.dp3Count)", Theme.accent)
+        // Status carries a symbol as well as a colour.
+        s.closedByDP4 ? tag("DP4 end", Theme.green, symbol: "checkmark.circle.fill")
+                      : tag("Timeout", Theme.yellow, symbol: "exclamationmark.triangle.fill")
+    }
+
+    private var accessibilitySummary: String {
+        let s = trip.summary
+        return "Trip \(trip.id), \(MelbourneTime.fullDate(s.start)), \(MelbourneTime.time(s.start)) to \(MelbourneTime.time(s.end)). "
+            + String(format: "%.2f kilometres, max %.0f kilometres per hour, ", s.distanceKm, s.maxSpeed)
+            + "\(Int(s.durationMin.rounded())) minutes, \(s.pingCount) pings. "
+            + String(format: "HDOP %.1f, %@. ", s.avgHDOP, Theme.hdopLabel(s.avgHDOP))
+            + (s.closedByDP4 ? "Ended by DP4." : "Ended by timeout.")
     }
 
     private func stat(_ value: String, _ label: String) -> some View {
@@ -270,8 +318,11 @@ struct TripCardView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private func tag(_ text: String, _ color: Color) -> some View {
-        Text(text)
+    private func tag(_ text: String, _ color: Color, symbol: String? = nil) -> some View {
+        HStack(spacing: 3) {
+            if let symbol { Image(systemName: symbol) }
+            Text(text)
+        }
             .font(.caption2.weight(.semibold))
             .padding(.horizontal, 6).padding(.vertical, 2)
             .background(color.opacity(0.15), in: RoundedRectangle(cornerRadius: 4))

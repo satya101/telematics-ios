@@ -14,6 +14,7 @@ struct TripDetailView: View {
     @State private var overlay: MapOverlay = .speed
     @State private var selectedPing: Ping?
     @State private var position: MapCameraPosition = .automatic
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(spacing: 0) {
@@ -23,16 +24,22 @@ struct TripDetailView: View {
             }
             if let ping = selectedPing {
                 PingInfoView(ping: ping) { selectedPing = nil }
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
             }
             TripStatsView(trip: trip)
         }
-        .navigationTitle("T\(trip.id) · \(MelbourneTime.fullDate(trip.summary.start))")
+        .animation(reduceMotion ? nil : .snappy(duration: 0.25), value: selectedPing?.id)
+        .sensoryFeedback(.selection, trigger: selectedPing?.id)
+        .navigationTitle("Trip \(trip.id) · \(MelbourneTime.shortDate(trip.summary.start))")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            Picker("Overlay", selection: $overlay) {
-                ForEach(MapOverlay.allCases) { Text($0.rawValue).tag($0) }
+            ToolbarItem(placement: .primaryAction) {
+                Picker("Colour pings by", selection: $overlay) {
+                    ForEach(MapOverlay.allCases) { Text($0.rawValue).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .fixedSize()
             }
-            .pickerStyle(.segmented)
         }
         .onChange(of: trip.id) {
             selectedPing = nil
@@ -44,13 +51,17 @@ struct TripDetailView: View {
         let pts = trip.pings
         return Map(position: $position) {
             MapPolyline(coordinates: pts.map(\.coordinate))
-                .stroke(Color(hex: 0x2A3060).opacity(0.8), lineWidth: 3)
+                .stroke(Theme.dynamic(light: 0x2A3060, dark: 0x8A96D6).opacity(0.8), lineWidth: 3)
 
             ForEach(Array(pts.dropFirst().dropLast())) { p in
                 Annotation("", coordinate: p.coordinate, anchor: .center) {
                     PingMarker(ping: p, color: color(for: p))
                         .id("\(p.id)-\(overlay.rawValue)")
                         .onTapGesture { selectedPing = p }
+                        .accessibilityElement()
+                        .accessibilityLabel(PingInfoView.summary(p))
+                        .accessibilityAddTraits(.isButton)
+                        .accessibilityAction { selectedPing = p }
                 }
                 .annotationTitles(.hidden)
             }
@@ -58,12 +69,18 @@ struct TripDetailView: View {
             if let s = pts.first {
                 Annotation("Trip Start", coordinate: s.coordinate, anchor: .center) {
                     EndpointMarker(letter: "S", color: Theme.green).onTapGesture { selectedPing = s }
+                        .accessibilityLabel("Trip start, " + PingInfoView.summary(s))
+                        .accessibilityAddTraits(.isButton)
+                        .accessibilityAction { selectedPing = s }
                 }
                 .annotationTitles(.hidden)
             }
             if let e = pts.last {
                 Annotation("Trip End", coordinate: e.coordinate, anchor: .center) {
                     EndpointMarker(letter: "E", color: Theme.red).onTapGesture { selectedPing = e }
+                        .accessibilityLabel("Trip end, " + PingInfoView.summary(e))
+                        .accessibilityAddTraits(.isButton)
+                        .accessibilityAction { selectedPing = e }
                 }
                 .annotationTitles(.hidden)
             }
@@ -101,7 +118,7 @@ struct PingMarker: View {
                 Circle().fill(color.opacity(0.9)).frame(width: 9, height: 9)
             }
         }
-        .frame(width: 22, height: 22)
+        .frame(width: 28, height: 28)
         .contentShape(Rectangle())
     }
 }
@@ -118,6 +135,9 @@ struct EndpointMarker: View {
             .background(color, in: Circle())
             .overlay(Circle().stroke(.white, lineWidth: 2))
             .shadow(color: .black.opacity(0.6), radius: 4, y: 2)
+            .frame(width: 32, height: 32)
+            .contentShape(Circle())
+            .accessibilityElement(children: .ignore)
     }
 }
 
@@ -139,7 +159,8 @@ struct LegendView: View {
             }
         }
         .padding(8)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8))
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -159,10 +180,24 @@ struct PingInfoView: View {
                 Text(String(format: "Odo %.3f km", Double(ping.odometerM) / 1000)).font(.caption)
             }
             Spacer()
-            Button(action: onClose) { Image(systemName: "xmark.circle.fill").foregroundStyle(Theme.muted) }
+            Button(action: onClose) {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.title3)
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(Theme.muted)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .accessibilityLabel("Close ping details")
+            .padding(.top, -10).padding(.trailing, -10)
         }
         .padding(12)
         .background(Theme.card)
+    }
+
+    static func summary(_ p: Ping) -> String {
+        "\(Theme.dataPointLabel(p.dataPoint)) at \(MelbourneTime.time(p.date)), "
+            + String(format: "%.0f kilometres per hour, HDOP %.1f %@", p.speed, p.hdop, Theme.hdopLabel(p.hdop))
     }
 }
 
@@ -182,7 +217,8 @@ struct TripStatsView: View {
                 stat("Start (\(MelbourneTime.abbreviation(s.start)))", MelbourneTime.time(s.start))
                 stat("End (\(MelbourneTime.abbreviation(s.end)))", MelbourneTime.time(s.end))
                 stat("DP2 Heartbeats", "\(s.dp2Count)")
-                stat("Trip Close", s.closedByDP4 ? "DP4 ✓" : "Timeout ⚠", color: s.closedByDP4 ? Theme.green : Theme.yellow)
+                stat("Trip Close", s.closedByDP4 ? "DP4 end" : "Timeout", color: s.closedByDP4 ? Theme.green : Theme.yellow,
+                     symbol: s.closedByDP4 ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
                 if let solar = s.avgSolarMV { stat("Avg Solar", "\(solar) mV") }
             }
             .padding(.horizontal, 16)
@@ -191,10 +227,15 @@ struct TripStatsView: View {
         .background(Theme.surface)
     }
 
-    private func stat(_ label: String, _ value: String, color: Color = .primary) -> some View {
+    private func stat(_ label: String, _ value: String, color: Color = .primary, symbol: String? = nil) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(value).font(.subheadline.weight(.semibold).monospacedDigit()).foregroundStyle(color)
+            HStack(spacing: 4) {
+                if let symbol { Image(systemName: symbol) }
+                Text(value)
+            }
+            .font(.subheadline.weight(.semibold).monospacedDigit()).foregroundStyle(color)
             Text(label).font(.caption2).foregroundStyle(Theme.muted).textCase(.uppercase)
         }
+        .accessibilityElement(children: .combine)
     }
 }

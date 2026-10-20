@@ -13,6 +13,10 @@ struct ILinkAirFetchView: View {
     @State private var toDate = MelbourneTime.calendar.startOfDay(for: Date())
     @State private var searchText = ""
     @State private var task: Task<Void, Never>?
+    @FocusState private var focus: Field?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private enum Field { case email, password, filter }
 
     var body: some View {
         NavigationStack {
@@ -31,16 +35,18 @@ struct ILinkAirFetchView: View {
                     }
                 }
                 if let error = ilinkair.errorMessage {
-                    Section { Text(error).foregroundStyle(Theme.red) }
+                    Section {
+                        Label(error, systemImage: "exclamationmark.triangle.fill").foregroundStyle(Theme.red)
+                    }
                 }
             }
             .scrollContentBackground(.hidden)
             .background(Theme.bg)
-            .navigationTitle("iLinkAir High Site Logs")
+            .navigationTitle("Fetch Logs")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Close") {
+                    Button("Cancel") {
                         task?.cancel()
                         dismiss()
                     }
@@ -53,10 +59,11 @@ struct ILinkAirFetchView: View {
                                      subtitle: fetchSubtitle) {
                         task?.cancel()
                     }
-                    .transition(.opacity.combined(with: .scale(scale: 1.04)))
+                    .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 1.04)))
                 }
             }
             .animation(.easeInOut(duration: 0.25), value: ilinkair.stage == nil)
+            .sensoryFeedback(.error, trigger: ilinkair.errorMessage) { _, new in new != nil }
             .interactiveDismissDisabled(ilinkair.isWorking)
         }
     }
@@ -68,22 +75,42 @@ struct ILinkAirFetchView: View {
                 .keyboardType(.emailAddress)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
+                .focused($focus, equals: .email)
+                .submitLabel(.next)
+                .onSubmit { focus = .password }
             SecureField("Password", text: $password)
                 .textContentType(.password)
-            Button {
-                task = Task {
-                    if await ilinkair.signIn(username: username.trimmingCharacters(in: .whitespaces), password: password) {
-                        password = ""
-                    }
-                }
-            } label: {
+                .focused($focus, equals: .password)
+                .submitLabel(.go)
+                .onSubmit { if canSignIn { signIn() } }
+            Button(action: signIn) {
                 Label("Sign in", systemImage: "person.badge.key")
             }
-            .disabled(username.isEmpty || password.isEmpty || ilinkair.isWorking)
+            .disabled(!canSignIn)
         } header: {
             Text("Sign in to iLinkAir")
         } footer: {
             Text("Uses your login.ilinkair.com.au account. Your password is stored only in this device's Keychain.")
+        }
+    }
+
+    private var canSignIn: Bool { !username.isEmpty && !password.isEmpty && !ilinkair.isWorking }
+
+    private func signIn() {
+        focus = nil
+        task = Task {
+            if await ilinkair.signIn(username: username.trimmingCharacters(in: .whitespaces), password: password) {
+                password = ""
+            }
+        }
+    }
+
+    private func startFetch() {
+        focus = nil
+        task = Task {
+            if await ilinkair.fetch(from: fromDate, to: toDate, searchText: searchText, into: tracker) {
+                dismiss()
+            }
         }
     }
 
@@ -95,17 +122,29 @@ struct ILinkAirFetchView: View {
                     let active = searchText.trimmingCharacters(in: .whitespaces).caseInsensitiveCompare(filter) == .orderedSame
                     Button { searchText = active ? "" : filter } label: {
                         Text(filter)
-                            .font(.caption.monospaced().weight(.semibold))
-                            .padding(.horizontal, 10).padding(.vertical, 5)
+                            .font(.footnote.monospaced().weight(.semibold))
+                            .padding(.horizontal, 12).padding(.vertical, 8)
+                            .frame(minHeight: 32)
                             .background(active ? Theme.accent : Theme.card, in: Capsule())
                             .foregroundStyle(active ? Theme.bg : .primary)
+                            .contentShape(Capsule())
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel("Recent filter \(filter)")
+                    .accessibilityAddTraits(active ? .isSelected : [])
+                    .accessibilityAction(named: "Remove") { ilinkair.forgetFilter(filter) }
                     .contextMenu {
                         Button("Remove", systemImage: "trash", role: .destructive) { ilinkair.forgetFilter(filter) }
                         Button("Clear all recent", systemImage: "xmark.bin", role: .destructive) { ilinkair.clearRecentFilters() }
                     }
                 }
+                // A visible way to clear history, not just the press-and-hold menu.
+                Button("Clear", role: .destructive) { ilinkair.clearRecentFilters() }
+                    .buttonStyle(.borderless)
+                    .font(.footnote)
+                    .frame(minHeight: 32)
+                    .padding(.leading, 4)
+                    .accessibilityLabel("Clear recent filters")
             }
             .padding(.vertical, 2)
         }
@@ -121,23 +160,36 @@ struct ILinkAirFetchView: View {
     @ViewBuilder private var signedIn: some View {
         Section {
             HStack {
-                Label(ilinkair.savedUsername ?? ilinkair.session?.userName ?? "Signed in", systemImage: "person.crop.circle")
+                Label(ilinkair.savedUsername ?? ilinkair.session?.userName ?? "Signed In", systemImage: "person.crop.circle")
+                    .lineLimit(1)
                 Spacer()
-                Button("Sign out", role: .destructive) { ilinkair.signOut() }
+                Button("Sign Out", role: .destructive) { ilinkair.signOut() }
+                    .buttonStyle(.borderless)
                     .disabled(ilinkair.isWorking)
             }
+        } header: {
+            Text("iLinkAir Account")
         }
         Section {
             DatePicker("From", selection: $fromDate, in: ...toDate, displayedComponents: .date)
             DatePicker("To", selection: $toDate, in: fromDate..., displayedComponents: .date)
             HStack {
-                TextField("Filter (IMEI or text, optional)", text: $searchText)
+                TextField("IMEI or text (optional)", text: $searchText)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
+                    .focused($focus, equals: .filter)
+                    .submitLabel(.search)
+                    .onSubmit { if !ilinkair.isWorking { startFetch() } }
                 if !searchText.isEmpty {
-                    Button { searchText = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(Theme.muted) }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("Clear filter")
+                    Button { searchText = "" } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(Theme.muted)
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.vertical, -10)
+                    .accessibilityLabel("Clear filter")
                 }
             }
             if !ilinkair.recentFilters.isEmpty {
@@ -146,20 +198,20 @@ struct ILinkAirFetchView: View {
         } header: {
             Text("Date range (Melbourne)")
         } footer: {
-            Text("Leave the filter blank to get every High Site log in the range, as on the portal's Logs page. Recent filters are remembered; press and hold one to remove it.")
+            Text("Leave the filter blank to get every High Site log in the range. Tap a recent filter to use it again.")
         }
         .environment(\.timeZone, MelbourneTime.zone)
         .environment(\.calendar, MelbourneTime.calendar)
         Section {
-            Button {
-                task = Task {
-                    if await ilinkair.fetch(from: fromDate, to: toDate, searchText: searchText, into: tracker) {
-                        dismiss()
-                    }
-                }
-            } label: {
-                Label("Fetch logs", systemImage: "arrow.down.circle")
+            Button(action: startFetch) {
+                Label("Fetch Logs", systemImage: "arrow.down.circle.fill")
+                    .font(.headline)
+                    .frame(maxWidth: .infinity)
             }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .listRowInsets(EdgeInsets())
+            .listRowBackground(Color.clear)
             .disabled(ilinkair.isWorking)
         }
     }
