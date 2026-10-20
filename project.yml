@@ -33,6 +33,9 @@ targets:
     sources: [TelematicsAppTests]
     dependencies:
       - target: TelematicsApp
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
 schemes:
   TelematicsApp:
     build:

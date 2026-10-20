@@ -9,6 +9,8 @@ struct RootView: View {
     @State private var showLogic = false
     @State private var showReport = false
     @State private var showAllTrips = false
+    @State private var showFetch = false
+    @State private var showSaveCSV = false
 
     var body: some View {
         NavigationSplitView {
@@ -21,7 +23,7 @@ struct RootView: View {
             } else if store.hasData {
                 AllTripsMapView(trips: store.visibleTrips)
             } else {
-                ContentUnavailableView("Upload a CSV or select a trip", systemImage: "map",
+                ContentUnavailableView("Fetch logs, upload a CSV or select a trip", systemImage: "map",
                                        description: Text("Arrows show heading direction on each ping."))
             }
         }
@@ -32,6 +34,11 @@ struct RootView: View {
             }
         }
         .sheet(isPresented: $showLogic) { LogicTrackerView() }
+        .sheet(isPresented: $showFetch, onDismiss: { if store.isFetched { selectedTripID = nil } }) { ILinkAirFetchView() }
+        .fileExporter(isPresented: $showSaveCSV, document: CSVTextDocument(text: store.rawText ?? ""),
+                      contentType: .commaSeparatedText, defaultFilename: store.fileName ?? "IOTHighSitePayloads.csv") { result in
+            if case .failure(let error) = result { store.errorMessage = "Save failed: \(error.localizedDescription)" }
+        }
         .sheet(isPresented: $showReport) { JourneyReportView(trips: store.visibleTrips) }
         .sheet(isPresented: $showAllTrips) {
             NavigationStack {
@@ -64,10 +71,12 @@ struct RootView: View {
                         Text("No export loaded")
                     }
                 } description: {
-                    Text("Import an IOT High Site payload export (Payload + CreatedDate columns). Trips are detected from sustained movement, not just ping timing, so parked GPS jitter and odometer glitches are filtered out.")
+                    Text("Fetch High Site logs from iLinkAir for a date range, or import an IOT High Site payload export (Payload + CreatedDate columns). Trips are detected from sustained movement, not just ping timing, so parked GPS jitter and odometer glitches are filtered out.")
                 } actions: {
-                    Button { showImporter = true } label: { Label("Upload Export CSV", systemImage: "square.and.arrow.down") }
+                    Button { showFetch = true } label: { Label("Fetch from iLinkAir", systemImage: "arrow.down.circle") }
                         .buttonStyle(.borderedProminent)
+                    Button { showImporter = true } label: { Label("Upload Export CSV", systemImage: "square.and.arrow.down") }
+                        .buttonStyle(.bordered)
                 }
                 boardPicker.padding(.horizontal)
                 Text("All times Melbourne AEST/AEDT").font(.caption).foregroundStyle(Theme.yellow)
@@ -118,6 +127,9 @@ struct RootView: View {
             }
         }
         ToolbarItem(placement: .primaryAction) {
+            Button { showFetch = true } label: { Label("Fetch from iLinkAir", systemImage: "arrow.down.circle") }
+        }
+        ToolbarItem(placement: .primaryAction) {
             Button { showImporter = true } label: { Label("Upload CSV", systemImage: "square.and.arrow.down") }
         }
         ToolbarItem(placement: .secondaryAction) {
@@ -126,6 +138,9 @@ struct RootView: View {
                     Picker("Board", selection: Binding(get: { store.board }, set: { v in Task { await store.setBoard(v) } })) {
                         ForEach(BoardVersion.allCases) { Text($0.label).tag($0) }
                     }
+                }
+                if store.isFetched {
+                    Button { showSaveCSV = true } label: { Label("Save CSV", systemImage: "square.and.arrow.up") }
                 }
                 Button { showAllTrips = true } label: { Label("All Trips Map", systemImage: "point.topleft.down.to.point.bottomright.curvepath") }
                     .disabled(!store.hasData)

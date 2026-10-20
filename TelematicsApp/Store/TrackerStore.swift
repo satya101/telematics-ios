@@ -7,7 +7,8 @@ import Observation
 final class TrackerStore {
     // Source
     private(set) var fileName: String?
-    private var rawText: String?
+    private(set) var rawText: String?
+    private(set) var isFetched = false                  // came from iLinkAir rather than a file
     private(set) var board: BoardVersion = .v370
 
     // Derived
@@ -43,6 +44,7 @@ final class TrackerStore {
     func reset() {
         fileName = nil
         rawText = nil
+        isFetched = false
         pings = []
         trips = []
         dateKeys = []
@@ -62,15 +64,17 @@ final class TrackerStore {
             let text = String(decoding: data, as: UTF8.self)
             fileName = url.lastPathComponent
             rawText = text
+            isFetched = false
             await reparse()
         } catch {
             errorMessage = "File read failed: \(error.localizedDescription)"
         }
     }
 
-    func load(text: String, fileName: String) async {
+    func load(text: String, fileName: String, fetched: Bool = false) async {
         self.fileName = fileName
         rawText = text
+        isFetched = fetched
         await reparse()
     }
 

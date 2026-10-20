@@ -52,3 +52,7 @@ open TelematicsApp.xcodeproj
 ```
 
 Pick an iPhone or iPad simulator and press Run. Tests run in CI on every push (`.github/workflows/ios.yml`).
+
+## Fetching logs from iLinkAir
+
+Tap **Fetch from iLinkAir**, sign in with your login.ilinkair.com.au account, pick a Melbourne date range (and optionally an IMEI or text filter), then tap **Fetch logs**. The app pages `Highsite/GetIOTHighSitePayloads` on the iLinkAir API, rebuilds the same `Id,Payload,CreatedDate` CSV as the portal's Export button, and loads it like an uploaded file. **More → Save CSV** saves the fetched data. Your password is stored only in this device's Keychain. Uploading a CSV still works as before.
