@@ -13,6 +13,7 @@ struct ILinkAirFetchView: View {
     @State private var toDate = MelbourneTime.calendar.startOfDay(for: Date())
     @State private var searchText = ""
     @State private var task: Task<Void, Never>?
+    @State private var confirmSignOut = false
     @FocusState private var focus: Field?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -163,9 +164,15 @@ struct ILinkAirFetchView: View {
                 Label(ilinkair.savedUsername ?? ilinkair.session?.userName ?? "Signed In", systemImage: "person.crop.circle")
                     .lineLimit(1)
                 Spacer()
-                Button("Sign Out", role: .destructive) { ilinkair.signOut() }
+                Button("Sign Out", role: .destructive) { confirmSignOut = true }
                     .buttonStyle(.borderless)
                     .disabled(ilinkair.isWorking)
+            }
+            .confirmationDialog("Sign out of iLinkAir?", isPresented: $confirmSignOut, titleVisibility: .visible) {
+                Button("Sign Out", role: .destructive) { ilinkair.signOut() }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Your saved password will be removed from this device.")
             }
         } header: {
             Text("iLinkAir Account")

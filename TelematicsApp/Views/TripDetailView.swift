@@ -68,7 +68,7 @@ struct TripDetailView: View {
 
             if let s = pts.first {
                 Annotation("Trip Start", coordinate: s.coordinate, anchor: .center) {
-                    EndpointMarker(letter: "S", color: Theme.green).onTapGesture { selectedPing = s }
+                    EndpointMarker(letter: "S", color: Theme.startMarker).onTapGesture { selectedPing = s }
                         .accessibilityLabel("Trip start, " + PingInfoView.summary(s))
                         .accessibilityAddTraits(.isButton)
                         .accessibilityAction { selectedPing = s }
@@ -77,7 +77,7 @@ struct TripDetailView: View {
             }
             if let e = pts.last {
                 Annotation("Trip End", coordinate: e.coordinate, anchor: .center) {
-                    EndpointMarker(letter: "E", color: Theme.red).onTapGesture { selectedPing = e }
+                    EndpointMarker(letter: "E", color: Theme.endMarker).onTapGesture { selectedPing = e }
                         .accessibilityLabel("Trip end, " + PingInfoView.summary(e))
                         .accessibilityAddTraits(.isButton)
                         .accessibilityAction { selectedPing = e }

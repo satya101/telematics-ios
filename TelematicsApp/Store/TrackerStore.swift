@@ -9,6 +9,7 @@ final class TrackerStore {
     private(set) var fileName: String?
     private(set) var rawText: String?
     private(set) var isFetched = false                  // came from iLinkAir rather than a file
+    private(set) var hasUnsavedFetch = false            // fetched and not yet saved as a CSV
     private(set) var board: BoardVersion = .v370
 
     // Derived
@@ -45,6 +46,7 @@ final class TrackerStore {
         fileName = nil
         rawText = nil
         isFetched = false
+        hasUnsavedFetch = false
         pings = []
         trips = []
         dateKeys = []
@@ -65,6 +67,7 @@ final class TrackerStore {
             fileName = url.lastPathComponent
             rawText = text
             isFetched = false
+            hasUnsavedFetch = false
             await reparse()
         } catch {
             errorMessage = "File read failed: \(error.localizedDescription)"
@@ -75,8 +78,11 @@ final class TrackerStore {
         self.fileName = fileName
         rawText = text
         isFetched = fetched
+        hasUnsavedFetch = fetched
         await reparse()
     }
+
+    func markSaved() { hasUnsavedFetch = false }
 
     private func reparse() async {
         guard let text = rawText else { return }

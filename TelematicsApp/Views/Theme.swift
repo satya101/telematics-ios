@@ -46,6 +46,10 @@ enum Theme {
     ]
 
     /// Palette for the all-trips overview.
+    /// Fixed trip start / end marker fills that keep their white letters readable on any map.
+    static let startMarker = Color(hex: 0x007A3D)
+    static let endMarker = Color(hex: 0xD32F2F)
+
     static let tripPalette: [Color] = [0x00D4FF, 0x00E57A, 0xFF6B2B, 0xA855F7, 0xFFC107, 0xFF4444, 0x00BCD4, 0x8BC34A].map { Color(hex: $0) }
 }
 

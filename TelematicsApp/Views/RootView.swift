@@ -11,6 +11,7 @@ struct RootView: View {
     @State private var showAllTrips = false
     @State private var showFetch = false
     @State private var showSaveCSV = false
+    @State private var confirmClose = false
     @State private var saveError: String?
 
     var body: some View {
@@ -38,7 +39,18 @@ struct RootView: View {
         .sheet(isPresented: $showFetch, onDismiss: { if store.isFetched { selectedTripID = nil } }) { ILinkAirFetchView() }
         .fileExporter(isPresented: $showSaveCSV, document: CSVTextDocument(text: store.rawText ?? ""),
                       contentType: .commaSeparatedText, defaultFilename: store.fileName ?? "IOTHighSitePayloads.csv") { result in
-            if case .failure(let error) = result { saveError = error.localizedDescription }
+            switch result {
+            case .success: store.markSaved()
+            case .failure(let error): saveError = error.localizedDescription
+            }
+        }
+        // Fetched logs exist only in memory, so confirm before discarding them (HIG: Modality).
+        .confirmationDialog("Close these logs?", isPresented: $confirmClose, titleVisibility: .visible) {
+            Button("Save Logs as CSV") { showSaveCSV = true }
+            Button("Close Without Saving", role: .destructive) { closeLogs() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("The fetched logs haven't been saved. You can fetch them again later.")
         }
         .sheet(isPresented: $showReport) { JourneyReportView(trips: store.visibleTrips) }
         .sheet(isPresented: $showAllTrips) {
@@ -132,12 +144,16 @@ struct RootView: View {
         .accessibilityLabel("Board version")
     }
 
+    private func closeLogs() {
+        selectedTripID = nil
+        store.reset()
+    }
+
     @ToolbarContentBuilder private var toolbar: some ToolbarContent {
         if store.hasData {
             ToolbarItem(placement: .topBarLeading) {
                 Button {
-                    selectedTripID = nil
-                    store.reset()
+                    if store.hasUnsavedFetch { confirmClose = true } else { closeLogs() }
                 } label: { Label("Home", systemImage: "house") }
             }
         }
