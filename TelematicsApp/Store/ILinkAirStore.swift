@@ -75,7 +75,7 @@ final class ILinkAirStore {
 
     private func fetchRows(from: Date, to: Date, searchText: String,
                            session: ILinkAirClient.Session) async throws -> [ILinkAirClient.PayloadRow] {
-        status = "Fetching logs…"
+        status = "Exporting logs…"
         return try await client.fetchPayloads(from: from, to: to, searchText: searchText, session: session) { got, total in
             await MainActor.run {
                 self.status = total.map { "Fetched \(got) of \($0) logs…" } ?? "Fetched \(got) logs…"

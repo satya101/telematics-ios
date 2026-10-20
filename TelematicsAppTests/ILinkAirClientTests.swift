@@ -49,6 +49,25 @@ final class ILinkAirClientTests: XCTestCase {
         XCTAssertFalse(req2.url!.absoluteString.contains("searchText"))
     }
 
+    func testExportRequest() throws {
+        let req = ILinkAirClient.exportRequest(fromKey: "2026-09-30", toKey: "2026-10-02", searchText: nil, session: session)
+        let comps = try XCTUnwrap(URLComponents(url: XCTUnwrap(req.url), resolvingAgainstBaseURL: false))
+        XCTAssertEqual(comps.host, "ilinkairiotassets.azurewebsites.net")
+        XCTAssertEqual(comps.path, "/api/Highsite/ExportIOTHighSitePayloads")
+        XCTAssertEqual(comps.queryItems, [URLQueryItem(name: "From", value: "2026-09-30"),
+                                          URLQueryItem(name: "To", value: "2026-10-02")])
+        XCTAssertEqual(req.value(forHTTPHeaderField: "Authorization"), "Bearer tok123")
+    }
+
+    func testParseExport() throws {
+        let csv = "\u{FEFF}Id,Payload,CreatedDate\n7,\"A,B,C\",2026-10-01T00:00:05\n8,\"D\"\n"
+        let rows = try XCTUnwrap(ILinkAirClient.parseExport(data: Data(csv.utf8), status: 200))
+        XCTAssertEqual(rows, [.init(createdDate: "2026-10-01T00:00:05", payload: "A,B,C"), .init(createdDate: "", payload: "D")])
+        XCTAssertNil(try ILinkAirClient.parseExport(data: Data("Id,Message\n1,x".utf8), status: 200))
+        XCTAssertNil(try ILinkAirClient.parseExport(data: Data(), status: 404))
+        XCTAssertThrowsError(try ILinkAirClient.parseExport(data: Data(), status: 401))
+    }
+
     func testPaddedKeysCoverDayEitherSide() {
         let cal = MelbourneTime.calendar
         let from = cal.date(from: DateComponents(year: 2026, month: 10, day: 1))!
@@ -129,7 +148,26 @@ final class ILinkAirClientTests: XCTestCase {
 
     // MARK: Paging
 
-    func testFetchPagesUntilTotalAndFilters() async throws {
+    func testFetchUsesExportCSV() async throws {
+        let csv = ILinkAirClient.csv(from: [
+            .init(createdDate: "2026-10-01T12:00:00", payload: payload("26-10-01 02:00:00")),
+            .init(createdDate: "2026-09-30T12:00:00", payload: payload("26-09-30 02:00:00")),
+        ])
+        StubProtocol.export = Data(csv.utf8)
+        StubProtocol.pages = [:]
+        StubProtocol.requested = []
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [StubProtocol.self]
+        let client = ILinkAirClient(urlSession: URLSession(configuration: config))
+
+        let day = MelbourneTime.calendar.date(from: DateComponents(year: 2026, month: 10, day: 1))!
+        let rows = try await client.fetchPayloads(from: day, to: day, searchText: nil, session: session)
+        XCTAssertEqual(StubProtocol.requested, [-1])               // export only, no paging
+        XCTAssertEqual(rows.map(\.createdDate), ["2026-10-01T12:00:00"])
+    }
+
+    func testFetchFallsBackToPagingAndFilters() async throws {
+        StubProtocol.export = nil
         let first = (0..<ILinkAirClient.pageSize).map { i in
             ["createdDate": String(format: "2026-10-01T%02d:%02d:00", (i / 60) % 24, i % 60),
              "payload": payload("26-10-01 02:00:00")]
@@ -148,14 +186,15 @@ final class ILinkAirClientTests: XCTestCase {
         let day = MelbourneTime.calendar.date(from: DateComponents(year: 2026, month: 10, day: 1))!
         let rows = try await client.fetchPayloads(from: day, to: day, searchText: nil, session: session)
 
-        XCTAssertEqual(StubProtocol.requested, [1, 2])
+        XCTAssertEqual(StubProtocol.requested, [-1, 1, 2])
         XCTAssertEqual(rows.count, ILinkAirClient.pageSize + 1)   // 5 Oct row dropped
         XCTAssertEqual(rows.last?.createdDate, "2026-10-01T23:59:59")
     }
 }
 
-/// Serves canned GetIOTHighSitePayloads pages by the "page" query parameter.
+/// Serves the canned export (logged as page -1, 404 when nil) and GetIOTHighSitePayloads pages.
 private final class StubProtocol: URLProtocol {
+    nonisolated(unsafe) static var export: Data?
     nonisolated(unsafe) static var pages: [Int: Data] = [:]
     nonisolated(unsafe) static var requested: [Int] = []
 
@@ -164,12 +203,15 @@ private final class StubProtocol: URLProtocol {
 
     override func startLoading() {
         let comps = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)
-        let page = Int(comps?.queryItems?.first { $0.name == "page" }?.value ?? "") ?? 0
+        let isExport = request.url!.path.hasSuffix("ExportIOTHighSitePayloads")
+        let page = isExport ? -1 : Int(comps?.queryItems?.first { $0.name == "page" }?.value ?? "") ?? 0
         Self.requested.append(page)
         let ok = request.value(forHTTPHeaderField: "Authorization") == "Bearer tok123"
-        let response = HTTPURLResponse(url: request.url!, statusCode: ok ? 200 : 401, httpVersion: nil, headerFields: nil)!
+        let code = !ok ? 401 : (isExport && Self.export == nil ? 404 : 200)
+        let response = HTTPURLResponse(url: request.url!, statusCode: code, httpVersion: nil, headerFields: nil)!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-        client?.urlProtocol(self, didLoad: Self.pages[page] ?? Data(#"{"data":[]}"#.utf8))
+        let body = isExport ? (Self.export ?? Data()) : (Self.pages[page] ?? Data(#"{"data":[]}"#.utf8))
+        client?.urlProtocol(self, didLoad: body)
         client?.urlProtocolDidFinishLoading(self)
     }
 

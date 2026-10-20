@@ -6,6 +6,8 @@ import Foundation
 ///
 /// Endpoints, taken from the portal's Angular bundle:
 /// - POST {apiURL}/Account/token  {username, password}  → {data: {access_token, userAccessLevel, …}}
+/// - GET  {iotApiURL}/Highsite/ExportIOTHighSitePayloads?From&To[&searchText]
+///        → the CSV behind the Logs page's "Export CSV" button (IOTHighSitePayloads_*.csv)
 /// - GET  {iotApiURL}/Highsite/GetIOTHighSitePayloads?From=yyyy-MM-dd&To=yyyy-MM-dd[&searchText]&page&pageSize
 ///        → {data: [{createdDate, payload}], totalRecords}
 /// Every authenticated call carries a Bearer token, the user's access-level ids and a JS-style
@@ -62,6 +64,21 @@ struct ILinkAirClient {
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.setValue("application/json", forHTTPHeaderField: "Accept")
         req.httpBody = try? JSONSerialization.data(withJSONObject: ["username": username, "password": password])
+        return req
+    }
+
+    static func exportRequest(fromKey: String, toKey: String, searchText: String?,
+                              session: Session, now: Date = Date()) -> URLRequest {
+        var comps = URLComponents(url: iotApiURL.appendingPathComponent("Highsite/ExportIOTHighSitePayloads"),
+                                  resolvingAgainstBaseURL: false)!
+        var items = [URLQueryItem(name: "From", value: fromKey), URLQueryItem(name: "To", value: toKey)]
+        if let s = searchText?.trimmingCharacters(in: .whitespaces), !s.isEmpty {
+            items.append(URLQueryItem(name: "searchText", value: s))
+        }
+        comps.queryItems = items
+        var req = URLRequest(url: comps.url!)
+        req.setValue("text/csv, application/octet-stream, */*", forHTTPHeaderField: "Accept")
+        authorize(&req, session: session, now: now)
         return req
     }
 
@@ -144,6 +161,22 @@ struct ILinkAirClient {
         return PayloadPage(rows: rows, totalRecords: total)
     }
 
+    /// Reads the portal's CSV export. Returns nil when the body isn't a CSV with a Payload
+    /// column, so the caller can fall back to paging the JSON list.
+    static func parseExport(data: Data, status: Int) throws -> [PayloadRow]? {
+        if status == 401 { throw ClientError.unauthorized }
+        guard (200..<300).contains(status) else { return nil }
+        let rows = CSVParser.rows(String(decoding: data, as: UTF8.self))
+        guard let header = rows.first?.map({
+            $0.trimmingCharacters(in: .whitespaces.union(CharacterSet(charactersIn: "\u{FEFF}"))).lowercased()
+        }), let p = header.firstIndex(of: "payload") else { return nil }
+        let c = header.firstIndex(of: "createddate")
+        return rows.dropFirst().compactMap { row in
+            guard p < row.count else { return nil }
+            return PayloadRow(createdDate: c.flatMap { $0 < row.count ? row[$0] : nil } ?? "", payload: row[p])
+        }
+    }
+
     /// Case-insensitive key lookup: ASP.NET may serialise camelCase or PascalCase.
     private static func value(_ dict: [String: Any], _ key: String) -> Any? {
         if let v = dict[key], !(v is NSNull) { return v }
@@ -198,16 +231,33 @@ struct ILinkAirClient {
         return try Self.parseLogin(data: data, status: status, username: username)
     }
 
-    /// Pages through every payload for the Melbourne date range and returns them oldest first.
+    /// Downloads the portal's CSV export for the Melbourne date range (paging the JSON list if
+    /// the export isn't usable) and returns the rows oldest first.
     func fetchPayloads(from: Date, to: Date, searchText: String?, session: Session,
                        progress: @Sendable (Int, Int?) async -> Void = { _, _ in }) async throws -> [PayloadRow] {
         let fromKey = MelbourneTime.dateKey(from), toKey = MelbourneTime.dateKey(to)
         let padded = Self.paddedKeys(from: from, to: to)
+        let exportReq = Self.exportRequest(fromKey: padded.from, toKey: padded.to, searchText: searchText, session: session)
+        let (exportData, exportStatus) = try await send(exportReq)
+        var rows: [PayloadRow]
+        if let exported = try Self.parseExport(data: exportData, status: exportStatus) {
+            rows = exported
+            await progress(rows.count, rows.count)
+        } else {
+            rows = try await pagePayloads(fromKey: padded.from, toKey: padded.to, searchText: searchText,
+                                          session: session, progress: progress)
+        }
+        let kept = Self.filter(rows, fromKey: fromKey, toKey: toKey)
+        return kept.sorted { $0.createdDate < $1.createdDate }
+    }
+
+    private func pagePayloads(fromKey: String, toKey: String, searchText: String?, session: Session,
+                              progress: @Sendable (Int, Int?) async -> Void) async throws -> [PayloadRow] {
         var rows: [PayloadRow] = []
         var page = 1
         while page <= Self.maxPages {
             try Task.checkCancellation()
-            let req = Self.payloadsRequest(fromKey: padded.from, toKey: padded.to, searchText: searchText,
+            let req = Self.payloadsRequest(fromKey: fromKey, toKey: toKey, searchText: searchText,
                                            page: page, session: session)
             let (data, status) = try await send(req)
             let result = try Self.parsePayloadPage(data: data, status: status)
@@ -217,8 +267,7 @@ struct ILinkAirClient {
             if let total = result.totalRecords, rows.count >= total { break }
             page += 1
         }
-        let kept = Self.filter(rows, fromKey: fromKey, toKey: toKey)
-        return kept.sorted { $0.createdDate < $1.createdDate }
+        return rows
     }
 
     private func send(_ req: URLRequest) async throws -> (Data, Int) {
