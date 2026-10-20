@@ -1,13 +1,13 @@
-# WHG Telematics for iOS
+# AssetIQ - Trip Logger for iOS
 
-Native iPhone and iPad version of the WHG Telematics fleet tracker website. SwiftUI and MapKit, iOS 17+.
+Native iPhone and iPad version of the AssetIQ - Trip Logger fleet tracker website. SwiftUI and MapKit, iOS 17+.
 
 You import an IOT High Site payload export (a CSV with a `Payload` column) and the app detects trips
 and maps them, using the same logic as the website.
 
 ## Features
 
-- **Import**: Upload CSV from Files, or "Open in WHG Telematics" from Mail, AirDrop or Files.
+- **Import**: Upload CSV from Files, or "Open in AssetIQ - Trip Logger" from Mail, AirDrop or Files.
   Board toggle for v370 (V2 Board) and v371; v371 reads solar charging voltage from field 23.
 - **Header**: IMEI, firmware, trip count, total km, top speed, last ping.
 - **Date filter**: one chip per Melbourne calendar day in the export, including idle days (shown as "(0)")

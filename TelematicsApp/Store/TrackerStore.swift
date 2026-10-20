@@ -39,6 +39,21 @@ final class TrackerStore {
         await reparse()
     }
 
+    /// Back to the upload screen: drop the loaded export but keep the board choice.
+    func reset() {
+        fileName = nil
+        rawText = nil
+        pings = []
+        trips = []
+        dateKeys = []
+        tripsByDate = [:]
+        statsByDate = [:]
+        skipped = 0
+        skippedStatusMessages = 0
+        activeDate = nil
+        errorMessage = nil
+    }
+
     func load(url: URL) async {
         let scoped = url.startAccessingSecurityScopedResource()
         defer { if scoped { url.stopAccessingSecurityScopedResource() } }

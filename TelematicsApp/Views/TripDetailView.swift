@@ -8,7 +8,7 @@ enum MapOverlay: String, CaseIterable, Identifiable {
 }
 
 /// One trip on the map: route line, a heading arrow (or dot when stationary) per ping
-/// coloured by speed or HDOP, purple DP2 heartbeats, and S/E markers.
+/// coloured by speed or HDOP (DP2 heartbeats get a purple ring), and S/E markers.
 struct TripDetailView: View {
     let trip: Trip
     @State private var overlay: MapOverlay = .speed
@@ -49,6 +49,7 @@ struct TripDetailView: View {
             ForEach(Array(pts.dropFirst().dropLast())) { p in
                 Annotation("", coordinate: p.coordinate, anchor: .center) {
                     PingMarker(ping: p, color: color(for: p))
+                        .id("\(p.id)-\(overlay.rawValue)")
                         .onTapGesture { selectedPing = p }
                 }
                 .annotationTitles(.hidden)
@@ -71,9 +72,10 @@ struct TripDetailView: View {
         .mapControls { MapCompass(); MapScaleView() }
     }
 
+    /// Every ping follows the selected legend. DP2 heartbeats are most pings on v371 boards,
+    /// so they are marked with a purple ring (see PingMarker) rather than a purple fill.
     private func color(for p: Ping) -> Color {
         if p.dataPoint == 4 { return Theme.red }
-        if p.dataPoint == 2 { return Theme.purple }
         return overlay == .speed ? Theme.speedColor(p.speed) : Theme.hdopColor(p.hdop)
     }
 }
@@ -84,22 +86,23 @@ struct PingMarker: View {
 
     var body: some View {
         let isDP2 = ping.dataPoint == 2
-        if ping.speed > 1 {
-            // Arrow points north, rotated to the heading.
-            Image(systemName: "location.north.fill")
-                .font(.system(size: isDP2 ? 10 : 12))
-                .foregroundStyle(color)
-                .shadow(color: .black.opacity(0.6), radius: 1)
-                .rotationEffect(.degrees(ping.direction))
-                .frame(width: 22, height: 22)
-                .contentShape(Rectangle())
-        } else {
-            Circle()
-                .fill(color.opacity(isDP2 ? 0.5 : 0.85))
-                .frame(width: isDP2 ? 8 : 10, height: isDP2 ? 8 : 10)
-                .frame(width: 22, height: 22)
-                .contentShape(Rectangle())
+        ZStack {
+            if isDP2 {
+                Circle().stroke(Theme.purple, lineWidth: 1.5).frame(width: 18, height: 18)
+            }
+            if ping.speed > 1 {
+                // Arrow points north, rotated to the heading.
+                Image(systemName: "location.north.fill")
+                    .font(.system(size: 11))
+                    .foregroundStyle(color)
+                    .shadow(color: .black.opacity(0.6), radius: 1)
+                    .rotationEffect(.degrees(ping.direction))
+            } else {
+                Circle().fill(color.opacity(0.9)).frame(width: 9, height: 9)
+            }
         }
+        .frame(width: 22, height: 22)
+        .contentShape(Rectangle())
     }
 }
 
@@ -131,8 +134,8 @@ struct LegendView: View {
                 }
             }
             HStack(spacing: 5) {
-                Circle().fill(Theme.purple).frame(width: 8, height: 8)
-                Text("DP2 Heartbeat").font(.caption2)
+                Circle().stroke(Theme.purple, lineWidth: 1.5).frame(width: 8, height: 8)
+                Text("DP2 Heartbeat (ring)").font(.caption2)
             }
         }
         .padding(8)

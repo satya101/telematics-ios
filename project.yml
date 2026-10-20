@@ -11,7 +11,7 @@ targets:
     info:
       path: TelematicsApp/Info.plist
       properties:
-        CFBundleDisplayName: WHG Telematics
+        CFBundleDisplayName: AssetIQ - Trip Logger
         UILaunchScreen: {}
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
         UISupportedInterfaceOrientations~ipad: [UIInterfaceOrientationPortrait, UIInterfaceOrientationPortraitUpsideDown, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
@@ -26,6 +26,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.satya101.whgtelematics
         SWIFT_VERSION: "5.9"
         TARGETED_DEVICE_FAMILY: "1,2"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
   TelematicsAppTests:
     type: bundle.unit-test
     platform: iOS

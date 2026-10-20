@@ -13,7 +13,7 @@ struct RootView: View {
     var body: some View {
         NavigationSplitView {
             sidebar
-                .navigationTitle("WHG Telematics")
+                .navigationTitle("AssetIQ - Trip Logger")
                 .toolbar { toolbar }
         } detail: {
             if let id = selectedTripID, let trip = store.trips.first(where: { $0.id == id }) {
@@ -59,7 +59,10 @@ struct RootView: View {
         if !store.hasData {
             VStack(spacing: 20) {
                 ContentUnavailableView {
-                    Label("No export loaded", systemImage: "doc.text.magnifyingglass")
+                    VStack(spacing: 12) {
+                        AssetIQLogo().frame(width: 96, height: 96)
+                        Text("No export loaded")
+                    }
                 } description: {
                     Text("Import an IOT High Site payload export (Payload + CreatedDate columns). Trips are detected from sustained movement, not just ping timing, so parked GPS jitter and odometer glitches are filtered out.")
                 } actions: {
@@ -103,6 +106,17 @@ struct RootView: View {
     }
 
     @ToolbarContentBuilder private var toolbar: some ToolbarContent {
+        ToolbarItem(placement: .topBarLeading) {
+            if store.hasData {
+                Button {
+                    selectedTripID = nil
+                    store.reset()
+                } label: { Label("Home", systemImage: "house") }
+            } else {
+                AssetIQLogo(cornerRadius: 7).frame(width: 30, height: 30)
+                    .accessibilityLabel("AssetIQ")
+            }
+        }
         ToolbarItem(placement: .primaryAction) {
             Button { showImporter = true } label: { Label("Upload CSV", systemImage: "square.and.arrow.down") }
         }
